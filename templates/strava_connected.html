@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Garmin Chat Connector — Strava</title>
+  <link rel="icon" href="/static/icon.ico" type="image/x-icon" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #0D0D1C;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .card {
+      background: #16162A;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+      padding: 2.5rem;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+    }
+    .icon { font-size: 3rem; margin-bottom: 1rem; }
+    h1 { font-size: 1.4rem; font-weight: 700; color: #E8EAF2; margin-bottom: 0.5rem; }
+    .subtitle { color: #8A90AA; font-size: 0.95rem; margin-bottom: 1.75rem; line-height: 1.55; }
+
+    /* Success state */
+    .box-success {
+      background: #0E1F16;
+      border: 1px solid #1D4A30;
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .box-success .label { color: #5AE098; font-weight: 700; font-size: 0.95rem; margin-bottom: 0.4rem; }
+    .box-success .detail { color: #6ACEA0; font-size: 0.875rem; line-height: 1.55; }
+
+    /* Error state */
+    .box-error {
+      background: #1F0E0E;
+      border: 1px solid #5A1A1A;
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .box-error .label { color: #E07070; font-weight: 700; font-size: 0.95rem; margin-bottom: 0.4rem; }
+    .box-error .detail { color: #C06060; font-size: 0.875rem; line-height: 1.55; }
+
+    .strava-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: #FC4C02;
+      color: #fff;
+      border-radius: 6px;
+      padding: 0.25rem 0.7rem;
+      font-size: 0.8rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+      letter-spacing: 0.02em;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 0.65rem 1.4rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      transition: background 0.15s;
+    }
+    .btn-primary { background: #1D7A4A; color: #E8F8EE; }
+    .btn-primary:hover { background: #22934F; }
+    .btn-secondary { background: #202040; color: #A0A8CC; margin-left: 0.75rem; }
+    .btn-secondary:hover { background: #282850; }
+
+    .footer { margin-top: 1.5rem; font-size: 0.8rem; color: #5A5F78; }
+    .footer a { color: #7080B8; text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+<div class="card">
+
+  {% if success %}
+
+    <div class="icon">🎉</div>
+    <div class="strava-badge">⚡ Strava</div>
+    <h1>Strava Connected!</h1>
+    <p class="subtitle">
+      {% if athlete_name %}
+        Linked to <strong style="color:#E8EAF2">{{ athlete_name }}</strong> on Strava.
+      {% endif %}
+      Your AI assistant can now access your Strava activities alongside your Garmin data.
+    </p>
+
+    <div class="box-success">
+      <div class="label">What's available now</div>
+      <div class="detail">
+        Ask your AI assistant about your Strava activities, stats, zones,
+        lap splits, and more. Try: <em>"How did my last run go?"</em>
+        or <em>"What are my all-time cycling totals on Strava?"</em>
+      </div>
+    </div>
+
+    <a class="btn btn-primary" href="/setup">Back to Setup</a>
+    <a class="btn btn-secondary" href="/disconnect">Disconnect</a>
+
+  {% else %}
+
+    <div class="icon">⚠️</div>
+    <div class="strava-badge">⚡ Strava</div>
+    <h1>Connection Failed</h1>
+    <p class="subtitle">Something went wrong while connecting your Strava account.</p>
+
+    <div class="box-error">
+      <div class="label">Error</div>
+      <div class="detail">{{ message }}</div>
+    </div>
+
+    <a class="btn btn-primary" href="/setup">Try Again</a>
+
+  {% endif %}
+
+  <div class="footer">
+    <a href="/disconnect">Disconnect your account</a>
+  </div>
+</div>
+</body>
+</html>

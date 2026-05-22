@@ -66,6 +66,15 @@ class User(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # ---------------------------------------------------------------------------
+    # Strava OAuth tokens (optional — only set after user connects Strava)
+    # ---------------------------------------------------------------------------
+    strava_athlete_id: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    strava_athlete_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    strava_access_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    strava_refresh_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    strava_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
 
 async def get_db():
     """FastAPI/Starlette dependency for async DB sessions."""

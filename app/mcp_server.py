@@ -1175,3 +1175,167 @@ async def get_nutrition_meals(date: Optional[str] = None) -> str:
     import json
     result = await _call("get_nutrition_meals", date)
     return result
+
+
+# ===========================================================================
+# GROUP 14 — Strava Integration
+# ===========================================================================
+
+async def _strava_call(method_name: str, *args, **kwargs) -> str:
+    """
+    Load the current user's StravaApiClient and run the named method in a
+    thread executor, matching the pattern of _call() for Garmin.
+
+    Returns a JSON string or a plain text error message.
+    """
+    import json as _json
+    from app.strava_adapter import get_strava_client
+
+    token = _get_token()
+    try:
+        client = await get_strava_client(token)
+    except RuntimeError as exc:
+        return str(exc)
+
+    loop = asyncio.get_event_loop()
+    method = getattr(client, method_name)
+    result = await loop.run_in_executor(None, method, *args, **kwargs)
+
+    if result is None:
+        return "No data available."
+    if isinstance(result, str):
+        return result
+    return _json.dumps(result, indent=2, default=str)
+
+
+@mcp.tool()
+async def get_strava_athlete() -> str:
+    """
+    Returns the connected Strava athlete's profile: name, location,
+    follower/following counts, weight, measurement preference, and
+    sport type breakdown.
+
+    Use this to confirm the Strava connection is active and to get
+    the athlete's basic biographical information.
+
+    Returns:
+        Athlete profile fields from the Strava API.
+    """
+    return await _strava_call("get_athlete")
+
+
+@mcp.tool()
+async def get_strava_recent_activities(days: Optional[int] = 14) -> str:
+    """
+    Returns recent Strava activities (runs, rides, swims, etc.) from
+    the past N days, with sport type, date, distance, moving time,
+    elapsed time, elevation gain, average heart rate, and average speed/pace.
+
+    Args:
+        days: How many days of history to retrieve (default 14, max 90).
+
+    Returns:
+        List of recent activities with summary metrics.
+    """
+    import time as _time
+    days = max(1, min(90, days or 14))
+    after = int(_time.time()) - days * 86400
+    return await _strava_call("get_activities", after=after, per_page=30)
+
+
+@mcp.tool()
+async def get_strava_activity_detail(activity_id: int) -> str:
+    """
+    Returns detailed data for a single Strava activity: full stats,
+    gear used, segment efforts, achievement count, and perceived exertion.
+
+    Args:
+        activity_id: Strava activity ID. Get this from get_strava_recent_activities
+                     (the "id" field of each activity).
+
+    Returns:
+        Complete activity detail including segments and gear.
+    """
+    return await _strava_call("get_activity", activity_id)
+
+
+@mcp.tool()
+async def get_strava_activity_laps(activity_id: int) -> str:
+    """
+    Returns lap-by-lap breakdown for a single Strava activity:
+    lap number, distance, moving time, average pace, average heart rate,
+    and max heart rate for each lap.
+
+    Args:
+        activity_id: Strava activity ID.
+
+    Returns:
+        Per-lap metrics for the activity.
+    """
+    return await _strava_call("get_activity_laps", activity_id)
+
+
+@mcp.tool()
+async def get_strava_activity_zones(activity_id: int) -> str:
+    """
+    Returns heart rate and power zone distribution for a single Strava activity:
+    time spent in each zone, distribution percentages, and zone boundaries.
+
+    Args:
+        activity_id: Strava activity ID.
+
+    Returns:
+        HR and power zone distribution for the activity.
+    """
+    return await _strava_call("get_activity_zones", activity_id)
+
+
+@mcp.tool()
+async def get_strava_stats() -> str:
+    """
+    Returns the athlete's all-time and recent (4-week) training statistics
+    from Strava, broken down by sport: running, cycling, and swimming.
+
+    Includes total distance, total elevation gain, total moving time,
+    and activity count for each period and sport.
+
+    Returns:
+        Lifetime and recent totals across all sport types.
+    """
+    import json as _json
+    from app.strava_adapter import get_strava_client
+
+    token = _get_token()
+    try:
+        client = await get_strava_client(token)
+    except RuntimeError as exc:
+        return str(exc)
+
+    if not client.athlete_id:
+        return (
+            "Athlete ID not available. "
+            "Please disconnect and reconnect your Strava account."
+        )
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None, client.get_athlete_stats, client.athlete_id
+    )
+    if result is None:
+        return "No stats available."
+    return _json.dumps(result, indent=2, default=str)
+
+
+@mcp.tool()
+async def get_strava_zones() -> str:
+    """
+    Returns the athlete's configured heart rate and power training zones in Strava.
+
+    Zone boundaries are set by the athlete in Strava settings based on
+    lactate threshold heart rate or FTP (for power zones).
+
+    Returns:
+        Heart rate and power zone boundaries and names.
+    """
+    return await _strava_call("get_athlete_zones")
+

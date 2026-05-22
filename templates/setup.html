@@ -144,6 +144,47 @@
     }
     .copy-btn:hover { background: #224A34; color: #60D080; }
 
+    /* ── Strava connect ── */
+    .strava-section {
+      margin-top: 1.25rem;
+      padding-top: 1.1rem;
+      border-top: 1px solid #1D3A2A;
+    }
+    .strava-section-title {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #9098B8;
+      margin-bottom: 0.65rem;
+    }
+    .btn-strava {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      background: #FC4C02;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      padding: 0.6rem 1.1rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .btn-strava:hover { background: #e04402; }
+    .strava-connected-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: #0E1F16;
+      border: 1px solid #1D4A30;
+      border-radius: 6px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.82rem;
+      color: #5AE098;
+      font-weight: 600;
+    }
+
     /* ── Alert box ── */
     .alert {
       background: #1F0E0E;
@@ -308,6 +349,19 @@
           <div class="mcp-url-wrap">
             <div class="mcp-url-box" id="mcp-url-display"></div>
             <button class="copy-btn" onclick="copyMcpUrl()">Copy</button>
+          </div>
+        </div>
+
+        <!-- Strava connect section (shown after Garmin login) -->
+        <div class="strava-section" id="strava-section">
+          <div class="strava-section-title">Also connect Strava (optional)</div>
+          <div id="strava-btn-wrap">
+            <a class="btn-strava" id="strava-connect-btn" href="#">
+              ⚡ Connect Strava
+            </a>
+          </div>
+          <div id="strava-connected-wrap" style="display:none">
+            <span class="strava-connected-badge">✓ Strava connected</span>
           </div>
         </div>
       </div>
@@ -507,6 +561,24 @@ seleniumbase install chromedriver</div>
     document.getElementById('mfa-panel').style.display = 'none';
     document.getElementById('mcp-url-display').textContent = mcpUrl;
     document.getElementById('success-panel').style.display = 'block';
+
+    // Wire up the Strava connect button with this user's token
+    var token = mcpUrl.split('token=')[1];
+    if (token) {
+      var stravaBtn = document.getElementById('strava-connect-btn');
+      stravaBtn.href = '/strava/connect?token=' + encodeURIComponent(token);
+
+      // Check if Strava is already connected for this token
+      fetch('/api/strava/status?token=' + encodeURIComponent(token))
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d.connected) {
+            document.getElementById('strava-btn-wrap').style.display = 'none';
+            document.getElementById('strava-connected-wrap').style.display = 'block';
+          }
+        })
+        .catch(function () { /* non-critical */ });
+    }
   }
 
 })();

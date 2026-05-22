@@ -416,6 +416,187 @@ async def _garmy_finish_auth(
 # Route list (imported by main.py)
 # ---------------------------------------------------------------------------
 
+
+
+# ---------------------------------------------------------------------------
+# GET /strava/connect  — begin Strava OAuth flow
+# ---------------------------------------------------------------------------
+
+async def strava_connect(request: Request):
+    """
+    Redirect the user to the Strava OAuth authorization page.
+
+    Requires ?token={user_access_token} in the query string so we can
+    associate the incoming callback with the right User row.
+    """
+    from app.strava_client import build_auth_url, strava_configured
+
+    if not strava_configured():
+        return HTMLResponse(
+            "<h2>Strava not configured.</h2>"
+            "<p>Set <code>STRAVA_CLIENT_ID</code> and <code>STRAVA_CLIENT_SECRET</code> "
+            "environment variables on the server.</p>",
+            status_code=503,
+        )
+
+    token = request.query_params.get("token", "").strip()
+    if not token:
+        return JSONResponse({"error": "token query parameter is required"}, status_code=400)
+
+    # Verify the token exists before redirecting
+    async with SessionLocal() as db:
+        result = await db.execute(
+            select(User).where(
+                User.access_token == token,
+                User.revoked == False,  # noqa: E712
+            )
+        )
+        user = result.scalar_one_or_none()
+
+    if not user:
+        return JSONResponse({"error": "Invalid or revoked token"}, status_code=404)
+
+    base_url = os.environ.get("APP_BASE_URL", str(request.base_url).rstrip("/"))
+    redirect_uri = f"{base_url}/strava/callback"
+
+    # Pass the user's access_token as OAuth state so we can match the callback
+    auth_url = build_auth_url(redirect_uri=redirect_uri, state=token)
+    return RedirectResponse(url=auth_url)
+
+
+# ---------------------------------------------------------------------------
+# GET /strava/callback  — Strava returns here after user authorizes
+# ---------------------------------------------------------------------------
+
+async def strava_callback(request: Request):
+    """
+    Handle the OAuth callback from Strava.
+
+    Strava appends ?code=...&state=... (or ?error=access_denied) to the
+    redirect URI.  We exchange the code for tokens and store them against
+    the User identified by the state parameter (= user's access_token).
+    """
+    error = request.query_params.get("error", "")
+    if error:
+        return _render(
+            "strava_connected.html",
+            success=False,
+            message=f"Strava authorization was denied: {error}",
+            athlete_name="",
+        )
+
+    code = request.query_params.get("code", "").strip()
+    state = request.query_params.get("state", "").strip()  # user's access_token
+
+    if not code or not state:
+        return JSONResponse({"error": "Missing code or state parameter"}, status_code=400)
+
+    base_url = os.environ.get("APP_BASE_URL", str(request.base_url).rstrip("/"))
+    redirect_uri = f"{base_url}/strava/callback"
+
+    from app.strava_client import exchange_code
+
+    loop = asyncio.get_event_loop()
+    try:
+        token_data = await loop.run_in_executor(None, exchange_code, code, redirect_uri)
+    except Exception as exc:
+        log.warning("Strava token exchange failed: %s", exc)
+        return _render(
+            "strava_connected.html",
+            success=False,
+            message=f"Token exchange failed: {exc}",
+            athlete_name="",
+        )
+
+    strava_access = token_data.get("access_token", "")
+    strava_refresh = token_data.get("refresh_token", "")
+    expires_at_ts = token_data.get("expires_at", 0)
+    athlete = token_data.get("athlete") or {}
+    athlete_id = athlete.get("id")
+    first = athlete.get("firstname") or ""
+    last = athlete.get("lastname") or ""
+    athlete_name = f"{first} {last}".strip() or athlete.get("username") or ""
+
+    if not strava_access or not strava_refresh:
+        return _render(
+            "strava_connected.html",
+            success=False,
+            message="Strava returned an incomplete token response.",
+            athlete_name="",
+        )
+
+    enc_access = encrypt_token(strava_access)
+    enc_refresh = encrypt_token(strava_refresh)
+    expires_dt = datetime.utcfromtimestamp(expires_at_ts) if expires_at_ts else None
+
+    async with SessionLocal() as db:
+        result = await db.execute(
+            select(User).where(User.access_token == state)
+        )
+        user = result.scalar_one_or_none()
+
+        if not user:
+            return _render(
+                "strava_connected.html",
+                success=False,
+                message="User not found. Please reconnect your Garmin account first.",
+                athlete_name="",
+            )
+
+        user.strava_athlete_id = str(athlete_id) if athlete_id else None
+        user.strava_athlete_name = athlete_name or None
+        user.strava_access_token_encrypted = enc_access
+        user.strava_refresh_token_encrypted = enc_refresh
+        user.strava_token_expires_at = expires_dt
+        await db.commit()
+
+    log.info("Strava connected for athlete %s (user token %s…)", athlete_name, state[:8])
+    return _render(
+        "strava_connected.html",
+        success=True,
+        message="",
+        athlete_name=athlete_name,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/strava/status  — check whether Strava is connected for a token
+# ---------------------------------------------------------------------------
+
+async def api_strava_status(request: Request) -> JSONResponse:
+    """
+    Return whether a user has connected their Strava account.
+
+    Query params: ?token={user_access_token}
+    """
+    token = request.query_params.get("token", "").strip()
+    if not token:
+        return JSONResponse({"error": "token is required"}, status_code=400)
+
+    async with SessionLocal() as db:
+        result = await db.execute(
+            select(User).where(
+                User.access_token == token,
+                User.revoked == False,  # noqa: E712
+            )
+        )
+        user = result.scalar_one_or_none()
+
+    if not user:
+        return JSONResponse({"error": "Invalid token"}, status_code=404)
+
+    connected = bool(user.strava_access_token_encrypted)
+    return JSONResponse({
+        "connected": connected,
+        "athlete_name": user.strava_athlete_name or "",
+        "athlete_id": user.strava_athlete_id or "",
+    })
+
+
+# ---------------------------------------------------------------------------
+# Route list (imported by main.py)
+# ---------------------------------------------------------------------------
+
 setup_routes = [
     Route("/", root, methods=["GET"]),
     Route("/setup", setup_page, methods=["GET"]),
@@ -428,4 +609,8 @@ setup_routes = [
     Route("/api/setup/login", api_setup_login, methods=["POST"]),
     Route("/api/setup/mfa", api_setup_mfa, methods=["POST"]),
     Route("/api/disconnect", api_disconnect, methods=["POST"]),
+    # Strava OAuth
+    Route("/strava/connect", strava_connect, methods=["GET"]),
+    Route("/strava/callback", strava_callback, methods=["GET"]),
+    Route("/api/strava/status", api_strava_status, methods=["GET"]),
 ]
