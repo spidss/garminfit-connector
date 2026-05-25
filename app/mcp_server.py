@@ -1242,7 +1242,7 @@ async def get_strava_recent_activities(days: Optional[int] = 14) -> str:
     import time as _time
     days = max(1, min(90, days or 14))
     after = int(_time.time()) - days * 86400
-    return await _strava_call("get_activities", after=after, per_page=30)
+    return await _strava_call("get_activities", after=after, per_page=200)
 
 
 @mcp.tool()
