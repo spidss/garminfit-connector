@@ -1197,9 +1197,11 @@ async def _strava_call(method_name: str, *args, **kwargs) -> str:
     except RuntimeError as exc:
         return str(exc)
 
+    import functools
     loop = asyncio.get_event_loop()
     method = getattr(client, method_name)
-    result = await loop.run_in_executor(None, method, *args, **kwargs)
+    fn = functools.partial(method, *args, **kwargs)
+    result = await loop.run_in_executor(None, fn)
 
     if result is None:
         return "No data available."
